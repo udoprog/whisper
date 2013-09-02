@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-struct wsp_ctx_t;
 struct wsp_error_t;
 struct wsp_file_t;
 struct wsp_point_b;
@@ -16,7 +15,6 @@ struct wsp_archive_info_t;
 struct wsp_metadata_b;
 struct wsp_metadata_t;
 
-typedef struct wsp_ctx_t wsp_ctx_t;
 typedef struct wsp_error_t wsp_error_t;
 typedef struct wsp_file_t wsp_file_t;
 typedef struct wsp_point_b wsp_point_b;
@@ -27,19 +25,12 @@ typedef struct wsp_metadata_b wsp_metadata_b;
 typedef struct wsp_metadata_t wsp_metadata_t;
 
 /* public functions {{{ */
-const char *wsp_errorstr(wsp_error_t *);
-
-struct wsp_ctx_t {
-    int _init;
-};
+const char *wsp_strerror(wsp_error_t *);
 
 struct wsp_error_t {
     int type;
-    int sys_errno;
+    int err;
 };
-
-int wsp_init(wsp_ctx_t *, wsp_error_t *);
-int wsp_close(wsp_ctx_t *, wsp_error_t *);
 /* }}} */
 
 /* wsp_file_t functions {{{ */
@@ -54,7 +45,6 @@ struct wsp_file_t {
 };
 
 int wsp_file_open(
-    wsp_ctx_t *,
     wsp_file_t *,
     const char *path,
     int mapping_type,
@@ -186,7 +176,7 @@ struct wsp_point_t {
     .points_size = 0,\
     .file = NULL\
 }
-#define WSP_ERROR_INIT {.type = WSP_ERROR_NONE, .sys_errno = 0}
+#define WSP_ERROR_INIT {.type = WSP_ERROR_NONE, .err = 0}
 
 #define WSP_ERROR -1
 #define WSP_OK 0
@@ -208,7 +198,7 @@ struct wsp_point_t {
 #define WSP_MIN (5l)
 
 #define WSP_MAPPING_FILE 1
-#define WSP_MAPPING_MAP 2
+#define WSP_MAPPING_MMAP 2
 /* }}} */
 
 #endif /* _WSP_H_ */

@@ -4,41 +4,30 @@
 #include <stdlib.h>
 
 int main(int argc, const char **argv) {
-    wsp_ctx_t ctx = WSP_CTX_INIT;
-    wsp_error_t error = WSP_ERROR_INIT;
-
-    if (wsp_init(&ctx, &error) == WSP_ERROR) {
-        printf("Error: %s\n", wsp_errorstr(&error));
-        return 1;
-    }
+    wsp_error_t e = WSP_ERROR_INIT;
 
     if (argc < 2) {
-        fprintf(stderr, "Usage: wsp-dump <file>\n");
+        printf("Usage: wsp-dump <file>\n");
         return 1;
     }
 
-    const char *filename = argv[1];
+    const char *p = argv[1];
     wsp_file_t file = WSP_FILE_INIT;
 
-    if (wsp_file_open(&ctx, &file, filename, WSP_MAPPING_MAP, &error) == WSP_ERROR) {
-        fprintf(
-            stderr, "%s: %s: %s\n",
-            wsp_errorstr(&error),
-            filename,
-            strerror(error.sys_errno)
-        );
+    if (wsp_file_open(&file, p, WSP_MAPPING_MMAP, &e) == WSP_ERROR) {
+        printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.err), p);
         return 1;
     }
 
     wsp_metadata_t metadata = WSP_METADATA_INIT;
 
-    if (wsp_file_read_metadata(&file, &metadata, &error) == WSP_ERROR) {
-        fprintf(stderr, "%s: %s: %s\n", wsp_errorstr(&error), filename, strerror(error.sys_errno));
+    if (wsp_file_read_metadata(&file, &metadata, &e) == WSP_ERROR) {
+        printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.err), p);
         return 1;
     }
 
-    if (wsp_metadata_load_archives(&metadata, &error) == WSP_ERROR) {
-        fprintf(stderr, "%s: %s: %s\n", wsp_errorstr(&error), filename, strerror(error.sys_errno));
+    if (wsp_metadata_load_archives(&metadata, &e) == WSP_ERROR) {
+        printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.err), p);
         return 1;
     }
 
@@ -48,8 +37,8 @@ int main(int argc, const char **argv) {
     for (i = 0; i < metadata.archives_count; i++) {
         ai = metadata.archives + i;
 
-        if (wsp_archive_info_load_points(ai, &error) == WSP_ERROR) {
-            fprintf(stderr, "%s: %s: %s\n", wsp_errorstr(&error), filename, strerror(error.sys_errno));
+        if (wsp_archive_info_load_points(ai, &e) == WSP_ERROR) {
+            printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.err), p);
             return 1;
         }
     }
@@ -77,11 +66,10 @@ int main(int argc, const char **argv) {
         }
     }
 
-    if (wsp_metadata_free(&metadata, &error) == WSP_ERROR) {
-        fprintf(stderr, "%s: %s: %s\n", wsp_errorstr(&error), filename, strerror(error.sys_errno));
+    if (wsp_metadata_free(&metadata, &e) == WSP_ERROR) {
+        printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.err), p);
         return 1;
     }
 
-    wsp_close(&ctx, &error);
     return 0;
 }

@@ -169,7 +169,7 @@ static inline int __wsp_file_setup_mmap(
 
     if (fstat(fn, &st) == -1) {
         error->type = WSP_ERROR_IO;
-        error->sys_errno = errno;
+        error->err = errno;
         return WSP_ERROR;
     }
 
@@ -178,7 +178,7 @@ static inline int __wsp_file_setup_mmap(
     if (tmp == MAP_FAILED) {
         fclose(fd);
         error->type = WSP_ERROR_IO;
-        error->sys_errno = errno;
+        error->err = errno;
         return WSP_ERROR;
     }
 
@@ -188,31 +188,9 @@ static inline int __wsp_file_setup_mmap(
 /* }}} */
 
 /* public functions {{{ */
-const char *wsp_errorstr(wsp_error_t *error)
+const char *wsp_strerror(wsp_error_t *error)
 {
     return wsp_error_strings[error->type];
-}
-
-int wsp_init(wsp_ctx_t *ctx, wsp_error_t *error)
-{
-    if (ctx->_init) {
-        error->type = WSP_ERROR_ALREADY_INITIALIZED;
-        return WSP_ERROR;
-    }
-
-    ctx->_init = 1;
-    return WSP_OK;
-}
-
-int wsp_close(wsp_ctx_t *ctx, wsp_error_t *error)
-{
-    if (!ctx->_init) {
-        error->type = WSP_ERROR_NOT_INITIALIZED;
-        return WSP_ERROR;
-    }
-
-    ctx->_init = 0;
-    return WSP_OK;
 }
 /* }}} */
 
@@ -289,21 +267,21 @@ int wsp_file_read(
 
         if (tmp == NULL) {
             error->type = WSP_ERROR_MALLOC;
-            error->sys_errno = errno;
+            error->err = errno;
             return WSP_ERROR;
         }
 
         if (ftell(file->fd) != offset) {
             free(tmp);
             error->type = WSP_ERROR_OFFSET;
-            error->sys_errno = errno;
+            error->err = errno;
             return WSP_ERROR;
         }
 
         if (fread(tmp, size, 1, file->fd) != 1) {
             free(tmp);
             error->type = WSP_ERROR_IO;
-            error->sys_errno = errno;
+            error->err = errno;
             return WSP_ERROR;
         }
 
@@ -318,18 +296,12 @@ int wsp_file_read(
 }
 
 int wsp_file_open(
-    wsp_ctx_t *ctx,
     wsp_file_t *file,
     const char *path,
     int mapping_type,
     wsp_error_t *error
 )
 {
-    if (!ctx->_init) {
-        error->type = WSP_ERROR_NOT_INITIALIZED;
-        return WSP_ERROR;
-    }
-
     if (file->fd != NULL || file->map != NULL) {
         error->type = WSP_ERROR_ALREADY_OPEN;
         return WSP_ERROR;
@@ -339,11 +311,11 @@ int wsp_file_open(
 
     if (!fd) {
         error->type = WSP_ERROR_IO;
-        error->sys_errno = errno;
+        error->err = errno;
         return WSP_ERROR;
     }
 
-    if (mapping_type == WSP_MAPPING_MAP) {
+    if (mapping_type == WSP_MAPPING_MMAP) {
         void *map;
 
         if (__wsp_file_setup_mmap(fd, &map, error) == WSP_ERROR) {
@@ -352,7 +324,7 @@ int wsp_file_open(
 
         file->fd = fd;
         file->map = map;
-        file->mapping_type = WSP_MAPPING_MAP;
+        file->mapping_type = WSP_MAPPING_MMAP;
         file->manual_buffer = 0;
     }
     else {
@@ -444,7 +416,7 @@ int wsp_archive_info_load_points(
 
     if (points == NULL) {
         error->type = WSP_ERROR_MALLOC;
-        error->sys_errno = errno;
+        error->err = errno;
         return WSP_ERROR;
     }
 
