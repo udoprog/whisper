@@ -2,9 +2,13 @@
 
 #include "wsp.h"
 
+#include "wsp_io_file.h"
+#include "wsp_io_mmap.h"
+
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -78,7 +82,7 @@ static inline void __wsp_parse_point(
 {
     READ4((char *)&p->timestamp, buf->timestamp);
     READ8((char *)&p->value, buf->value);
-}
+} // __wsp_parse_point
 
 static inline void __wsp_dump_point(
     wsp_point_t *p,
@@ -87,7 +91,7 @@ static inline void __wsp_dump_point(
 {
     READ4(buf->timestamp, (char *)&p->timestamp);
     READ8(buf->value, (char *)&p->value);
-}
+} // __wsp_dump_point
 
 static inline void __wsp_parse_points(
     wsp_point_b *buf,
@@ -100,7 +104,7 @@ static inline void __wsp_parse_points(
     for (i = 0; i < points_count; i++) {
         __wsp_parse_point(buf + i, points + i);
     }
-}
+} // __wsp_parse_points
 
 static inline void __wsp_dump_points(
     wsp_point_t *points,
@@ -113,7 +117,7 @@ static inline void __wsp_dump_points(
     for (i = 0; i < points_count; i++) {
         __wsp_dump_point(points + i, buf + i);
     }
-}
+} // __wsp_dump_points
 
 static inline void __wsp_parse_metadata(
     wsp_metadata_b *buf,
@@ -124,7 +128,7 @@ static inline void __wsp_parse_metadata(
     READ4((char *)&m->max_retention, buf->max_retention);
     READ4((char *)&m->x_files_factor, buf->x_files_factor);
     READ4((char *)&m->archives_count, buf->archives_count);
-}
+} // __wsp_parse_metadata
 
 static inline void __wsp_dump_metadata(
     wsp_metadata_t *m,
@@ -135,7 +139,7 @@ static inline void __wsp_dump_metadata(
     READ4(buf->max_retention, (char *)&m->max_retention);
     READ4(buf->x_files_factor, (char *)&m->x_files_factor);
     READ4(buf->archives_count, (char *)&m->archives_count);
-}
+} // __wsp_dump_metadata
 
 static inline void __wsp_parse_archive_info(
     wsp_archive_info_b *buf,
@@ -145,7 +149,7 @@ static inline void __wsp_parse_archive_info(
     READ4((char *)&ai->offset, buf->offset);
     READ4((char *)&ai->seconds_per_point, buf->seconds_per_point);
     READ4((char *)&ai->points_count, buf->points_count);
-}
+} // __wsp_parse_archive_info
 
 static inline void __wsp_dump_archive_info(
     wsp_archive_info_t *ai,
@@ -155,55 +159,63 @@ static inline void __wsp_dump_archive_info(
     READ4(buf->offset, (char *)&ai->offset);
     READ4(buf->seconds_per_point, (char *)&ai->seconds_per_point);
     READ4(buf->points_count, (char *)&ai->points_count);
-}
+} // __wsp_dump_archive_info
 
-static inline int __wsp_file_setup_mmap(
-    FILE *fd,
-    void **map,
-    wsp_error_t *error
+/*
+ * Setup memory mapping for the specified file.
+ *
+ * io_fd: The file descriptor to memory map.
+ * io_mmap: Pointer to a pointer that will be written to the new memory region.
+ * io_size: Pointer to write the file size to.
+ * e: Error object.
+ */
+static int __wsp_setup_mmap(
+    FILE *io_fd,
+    void **io_mmap,
+    off_t *io_size,
+    wsp_error_t *e
 )
 {
-    int fn = fileno(fd);
+    int fn = fileno(io_fd);
 
     struct stat st;
 
     if (fstat(fn, &st) == -1) {
-        error->type = WSP_ERROR_IO;
-        error->err = errno;
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
         return WSP_ERROR;
     }
 
-    void *tmp = mmap(NULL, st.st_size, PROT_READ | PROT_READ, MAP_SHARED, fn, 0);
+    void *tmp = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fn, 0);
 
     if (tmp == MAP_FAILED) {
-        fclose(fd);
-        error->type = WSP_ERROR_IO;
-        error->err = errno;
+        fclose(io_fd);
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
         return WSP_ERROR;
     }
 
-    *map = tmp;
+    *io_mmap = tmp;
+    *io_size = st.st_size;
     return WSP_OK;
-}
-/* }}} */
+} // __wsp_setup_mmap
 
-/* public functions {{{ */
-const char *wsp_strerror(wsp_error_t *error)
-{
-    return wsp_error_strings[error->type];
-}
-/* }}} */
-
-/* wsp_file_t functions {{{ */
-int wsp_file_read_metadata(
-    wsp_file_t *file,
+/*
+ * Read metadata from file.
+ *
+ * w: Whisper file to read metadata from.
+ * m: Pointer to data that will be updated with the read metadata.
+ * e: Error object.
+ */
+static int __wsp_read_metadata(
+    wsp_t *w,
     wsp_metadata_t *m,
-    wsp_error_t *error
+    wsp_error_t *e
 )
 {
     wsp_metadata_b *buf;
 
-    if (wsp_file_read(file, 0, sizeof(wsp_metadata_b), (void **)&buf, error) == WSP_ERROR) {
+    if (w->io->read(w, 0, sizeof(wsp_metadata_b), (void **)&buf, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 
@@ -211,252 +223,235 @@ int wsp_file_read_metadata(
 
     __wsp_parse_metadata(buf, &tmp);
 
-    if (file->manual_buffer) {
+    if (w->io_manual_buf) {
         free(buf);
     }
 
     m->aggregation_type = tmp.aggregation_type;
     m->max_retention = tmp.max_retention;
     m->x_files_factor = tmp.x_files_factor;
-    m->archives = NULL;
     m->archives_count = tmp.archives_count;
-    m->archives_size = sizeof(wsp_archive_info_t) * tmp.archives_count;
-    m->file = file;
 
     return WSP_OK;
-}
+} // __wsp_read_metadata
 
-int wsp_file_read_archive_info(
-    wsp_file_t *file,
+int __wsp_load_archives(
+    wsp_t *w,
+    wsp_error_t *e
+)
+{
+    wsp_archive_info_t *archives = malloc(w->archives_size);
+
+    if (!archives) {
+        e->type = WSP_ERROR_MALLOC;
+        return WSP_ERROR;
+    }
+
+    uint32_t i;
+
+    for (i = 0; i < w->meta.archives_count; i++) {
+        wsp_archive_info_t *ai = archives + i;
+
+        if (wsp_read_archive_info(w, i, ai, e) == WSP_ERROR) {
+            free(archives);
+            return WSP_ERROR;
+        }
+    }
+
+    // free the old archives.
+    if (w->archives != NULL) {
+        free(w->archives);
+        w->archives = NULL;
+        w->archives_count = 0;
+    }
+
+    w->archives = archives;
+    w->archives_count = w->meta.archives_count;
+
+    return WSP_OK;
+} // __wsp_load_archives
+
+/* }}} */
+
+/* public functions {{{ */
+const char *wsp_strerror(wsp_error_t *e)
+{
+    return wsp_error_strings[e->type];
+}
+/* }}} */
+
+/* wsp_t functions {{{ */
+int wsp_read_archive_info(
+    wsp_t *w,
     int index,
     wsp_archive_info_t *ai,
-    wsp_error_t *error
+    wsp_error_t *e
 )
 {
     wsp_archive_info_b *buf;
 
     size_t offset = sizeof(wsp_metadata_b) + sizeof(wsp_archive_info_b) * index;
 
-    if (wsp_file_read(file, offset, sizeof(wsp_archive_info_b), (void **)&buf, error) == WSP_ERROR) {
+    if (w->io->read(w, offset, sizeof(wsp_archive_info_b), (void **)&buf, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 
     __wsp_parse_archive_info(buf, ai);
 
-    if (file->manual_buffer) {
+    ai->points = NULL;
+    ai->points_size = sizeof(wsp_point_t) * ai->points_count;
+
+    if (w->io_manual_buf) {
         free(buf);
     }
 
-    ai->points = NULL;
-    ai->file = file;
-    ai->points_size = sizeof(wsp_point_t) * ai->points_count;
-
     return WSP_OK;
 }
 
-int wsp_file_read(
-    wsp_file_t *file,
-    long offset,
-    size_t size,
-    void **buf,
-    wsp_error_t *error
-)
+int wsp_open(wsp_t *w, const char *path, wsp_mapping_t mapping, wsp_error_t *e)
 {
-    if (file->mapping_type == WSP_MAPPING_FILE) {
-        void *tmp = malloc(size);
+    if (w->io_fd != NULL || w->io_mmap != NULL) {
+        e->type = WSP_ERROR_ALREADY_OPEN;
+        return WSP_ERROR;
+    }
 
-        if (tmp == NULL) {
-            error->type = WSP_ERROR_MALLOC;
-            error->err = errno;
+    FILE *io_fd = fopen(path, "r+");
+
+    if (!io_fd) {
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
+        return WSP_ERROR;
+    }
+
+    if (mapping == WSP_MMAP) {
+        void *io_mmap;
+        off_t io_size;
+
+        if (__wsp_setup_mmap(io_fd, &io_mmap, &io_size, e) == WSP_ERROR) {
             return WSP_ERROR;
         }
 
-        if (ftell(file->fd) != offset) {
-            free(tmp);
-            error->type = WSP_ERROR_OFFSET;
-            error->err = errno;
-            return WSP_ERROR;
-        }
-
-        if (fread(tmp, size, 1, file->fd) != 1) {
-            free(tmp);
-            error->type = WSP_ERROR_IO;
-            error->err = errno;
-            return WSP_ERROR;
-        }
-
-        *buf = tmp;
+        w->io_fd = io_fd;
+        w->io_mmap = io_mmap;
+        w->io_size = io_size;
+        w->io_mapping = WSP_MMAP;
+        w->io_manual_buf = 0;
+        w->io = &wsp_io_mmap;
     }
     else {
-        /* the beauty of mmap:ed files */
-        *buf = file->map + offset;
+        w->io_fd = io_fd;
+        w->io_mmap = NULL;
+        w->io_size = 0;
+        w->io_mapping = wsp;
+        w->io_manual_buf = 1;
+        w->io = &wsp_io_file;
     }
 
-    return WSP_OK;
-}
+    wsp_metadata_t meta = WSP_METADATA_INIT;
 
-int wsp_file_open(
-    wsp_file_t *file,
-    const char *path,
-    int mapping_type,
-    wsp_error_t *error
-)
-{
-    if (file->fd != NULL || file->map != NULL) {
-        error->type = WSP_ERROR_ALREADY_OPEN;
+    if (__wsp_read_metadata(w, &meta, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 
-    FILE *fd = fopen(path, "r+");
+    w->meta = meta;
 
-    if (!fd) {
-        error->type = WSP_ERROR_IO;
-        error->err = errno;
+    w->archives = NULL;
+    w->archives_size = sizeof(wsp_archive_info_t) * meta.archives_count;
+    w->archives_count = 0;
+
+    if (__wsp_load_archives(w, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 
-    if (mapping_type == WSP_MAPPING_MMAP) {
-        void *map;
-
-        if (__wsp_file_setup_mmap(fd, &map, error) == WSP_ERROR) {
-            return WSP_ERROR;
-        }
-
-        file->fd = fd;
-        file->map = map;
-        file->mapping_type = WSP_MAPPING_MMAP;
-        file->manual_buffer = 0;
-    }
-    else {
-        file->fd = fd;
-        file->mapping_type = WSP_MAPPING_FILE;
-        file->manual_buffer = 1;
-    }
-
     return WSP_OK;
-}
-/* }}} */
+} // wsp_open
 
-/* wsp_metadata_t functions {{{ */
-int wsp_metadata_load_archives(
-    wsp_metadata_t *m,
-    wsp_error_t *error
-)
+int wsp_close(wsp_t *w, wsp_error_t *e)
 {
-    if (m->archives != NULL) {
-        return WSP_OK;
-    }
-
-    wsp_archive_info_t *archives = malloc(m->archives_size);
-
-    if (!archives) {
-        error->type = WSP_ERROR_MALLOC;
-        return WSP_ERROR;
-    }
-
-    uint32_t i;
-
-    for (i = 0; i < m->archives_count; i++) {
-        wsp_archive_info_t *ai = archives + i;
-
-        if (wsp_file_read_archive_info(m->file, i, ai, error) == WSP_ERROR) {
-            free(archives);
-            return WSP_ERROR;
-        }
-    }
-
-    m->archives = archives;
-
-    return WSP_OK;
-}
-
-int wsp_metadata_free(
-    wsp_metadata_t *m,
-    wsp_error_t *error
-)
-{
-    if (m->archives != NULL) {
+    if (w->archives != NULL) {
         uint32_t i;
 
-        for (i = 0; i < m->archives_count; i++) {
-            wsp_archive_info_t *ai = m->archives + i;
+        wsp_metadata_t m = w->meta;
 
-            if (wsp_archive_info_free(ai, error) == WSP_ERROR) {
+        for (i = 0; i < m.archives_count; i++) {
+            wsp_archive_info_t *ai = w->archives + i;
+
+            if (wsp_archive_info_free(ai, e) == WSP_ERROR) {
                 return WSP_ERROR;
             }
         }
 
-        free(m->archives);
-        m->archives = NULL;
+        free(w->archives);
+        w->archives = NULL;
     }
 
-    m->aggregation_type = 0l;
-    m->max_retention = 0l;
-    m->x_files_factor = 0.0f;
-    m->archives = NULL;
-    m->archives_count = 0l;
-    m->archives_size = 0;
-    m->file = NULL;
+    if (w->io_fd != NULL) {
+        fclose(w->io_fd);
+        w->io_fd = NULL;
+    }
+
+    if (w->io_mmap != NULL) {
+        munmap(w->io_mmap, w->io_size);
+        w->io_mmap = NULL;
+    }
+
+    w->archives = NULL;
+    w->archives_size = 0;
+    w->meta.aggregation_type = 0l;
+    w->meta.max_retention = 0l;
+    w->meta.x_files_factor = 0.0f;
+    w->meta.archives_count = 0l;
 
     return WSP_OK;
-}
+} // wsp_close
 /* }}} */
 
 /* wsp_archive_info_t functions {{{ */
-int wsp_archive_info_load_points(
+int wsp_load_points(
+    wsp_t *w,
     wsp_archive_info_t *ai,
-    wsp_error_t *error
+    wsp_point_t *points,
+    wsp_error_t *e
 )
 {
     if (ai->points_count == 0 || ai->points != NULL) {
         return WSP_OK;
     }
 
-    wsp_point_t *points = malloc(ai->points_size);
-
-    if (points == NULL) {
-        error->type = WSP_ERROR_MALLOC;
-        error->err = errno;
-        return WSP_ERROR;
-    }
-
     wsp_point_b *buf = NULL;
 
     size_t read_size = sizeof(wsp_point_b) * ai->points_count;
 
-    if (wsp_file_read(ai->file, ai->offset, read_size, (void **)&buf, error) == WSP_ERROR) {
+    if (w->io->read(w, ai->offset, read_size, (void **)&buf, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 
     __wsp_parse_points(buf, ai->points_count, points);
 
-    if (ai->file->manual_buffer) {
+    if (w->io_manual_buf) {
         free(buf);
     }
 
-    ai->points = points;
-
     return WSP_OK;
-}
+} // wsp_archive_info_load_points
 
 int wsp_archive_info_free(
     wsp_archive_info_t *ai,
-    wsp_error_t *error
+    wsp_error_t *e
 )
 {
     if (ai->points != NULL) {
         free(ai->points);
+        ai->points = NULL;
     }
 
     ai->offset = 0;
     ai->seconds_per_point = 0;
     ai->points_count = 0;
-    ai->points = NULL;
     ai->points_size = 0;
-    ai->file = NULL;
 
     return WSP_OK;
-}
+} // wsp_archive_info_free
 /* }}} */
 
 /* wsp_point_t function {{{ */

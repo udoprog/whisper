@@ -1,0 +1,4 @@
+*.wsp
+*.o
+wsp.a
+whisper-dump
