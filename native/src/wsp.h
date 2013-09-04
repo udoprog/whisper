@@ -17,8 +17,9 @@ struct wsp_metadata_b;
 struct wsp_metadata_t;
 
 typedef enum {
-    wsp,
-    WSP_MMAP
+    WSP_MAPPING_NONE = 0,
+    WSP_FILE = 1,
+    WSP_MMAP = 2
 } wsp_mapping_t;
 
 typedef enum {
@@ -134,17 +135,17 @@ struct wsp_t {
     uint32_t archives_count;
 };
 
-#define WSP_INIT {\
-    .io_fd = NULL,\
-    .io_mmap = NULL,\
-    .io_size = 0,\
-    .io_mapping = 0,\
-    .io_manual_buf = 0,\
-    .io = NULL,\
-    .archives = NULL,\
-    .archives_size = 0,\
-    .archives_count = 0\
-}
+#define WSP_INIT(w) do {\
+    (w)->io_fd = NULL;\
+    (w)->io_mmap = NULL;\
+    (w)->io_size = 0;\
+    (w)->io_mapping = 0;\
+    (w)->io_manual_buf = 0;\
+    (w)->io = NULL;\
+    (w)->archives = NULL;\
+    (w)->archives_size = 0;\
+    (w)->archives_count = 0;\
+} while(0)
 
 int wsp_open(wsp_t *, const char *path, wsp_mapping_t, wsp_error_t *);
 int wsp_close(wsp_t *, wsp_error_t *);

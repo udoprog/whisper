@@ -338,13 +338,17 @@ int wsp_open(wsp_t *w, const char *path, wsp_mapping_t mapping, wsp_error_t *e)
         w->io_manual_buf = 0;
         w->io = &wsp_io_mmap;
     }
-    else {
+    else if (mapping == WSP_FILE) {
         w->io_fd = io_fd;
         w->io_mmap = NULL;
         w->io_size = 0;
-        w->io_mapping = wsp;
+        w->io_mapping = WSP_FILE;
         w->io_manual_buf = 1;
         w->io = &wsp_io_file;
+    }
+    else {
+        e->type = WSP_ERROR_IO;
+        return WSP_ERROR;
     }
 
     wsp_metadata_t meta = WSP_METADATA_INIT;

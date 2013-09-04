@@ -12,7 +12,8 @@ int main(int argc, const char **argv) {
     }
 
     const char *p = argv[1];
-    wsp_t w = WSP_INIT;
+    wsp_t w;
+    WSP_INIT(&w);
 
     if (wsp_open(&w, p, WSP_MMAP, &e) == WSP_ERROR) {
         printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.syserr), p);

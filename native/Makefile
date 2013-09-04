@@ -4,11 +4,11 @@ SOURCES+=src/wsp_io_mmap.c
 OBJECTS=$(SOURCES:.c=.o)
 ARCHIVE=wsp.a
 
-TESTS+=tests/test_wsp_io_file.test
+TESTS+=tests/test_wsp_io_file.1.test
 
-CFLAGS=-g -pedantic -Wall -O3 -std=gnu11
+CFLAGS=-g -pedantic -Wall -O3 -std=gnu11 -fPIC
 
-all: whisper-dump
+all: whisper-dump python-bindings
 
 clean:
 	$(RM) $(OBJECTS)
@@ -22,6 +22,11 @@ clean:
 
 tests: $(TESTS)
 	@for test in $(TESTS); do echo "TEST: $$test"; $$test; done
+
+.PHONY: python-bindings
+
+python-bindings:
+	python setup.py build
 
 $(ARCHIVE): $(OBJECTS)
 	$(AR) cr $@ $(OBJECTS)
