@@ -1,6 +1,69 @@
 #include "wsp_io_mmap.h"
 
 #include <string.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <sys/mman.h>
+
+static int __wsp_io_open__mmap(
+    wsp_t *w,
+    const char *path,
+    wsp_error_t *e
+)
+{
+    FILE *io_fd = fopen(path, "r+");
+
+    if (!io_fd) {
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
+        return WSP_ERROR;
+    }
+
+    struct stat st;
+
+    int fn = fileno(io_fd);
+
+    if (fstat(fn, &st) == -1) {
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
+        return WSP_ERROR;
+    }
+
+    void *tmp = mmap(NULL, st.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fn, 0);
+
+    if (tmp == MAP_FAILED) {
+        fclose(io_fd);
+        e->type = WSP_ERROR_IO;
+        e->syserr = errno;
+        return WSP_ERROR;
+    }
+
+    w->io_fd = io_fd;
+    w->io_mmap = tmp;
+    w->io_size = st.st_size;
+    w->io_mapping = WSP_MMAP;
+    w->io_manual_buf = 0;
+
+    return WSP_OK;
+}
+
+static int __wsp_io_close__mmap(
+    wsp_t *w,
+    wsp_error_t *e
+)
+{
+    if (w->io_fd != NULL) {
+        fclose(w->io_fd);
+        w->io_fd = NULL;
+    }
+
+    if (w->io_mmap != NULL) {
+        munmap(w->io_mmap, w->io_size);
+        w->io_mmap = NULL;
+    }
+
+    return WSP_OK;
+}
 
 /*
  * Reader function for WSP_MMAP mappings.
@@ -38,6 +101,8 @@ static int __wsp_io_write__mmap(
 } // __wsp_io_write__mmap
 
 wsp_io wsp_io_mmap = {
+    .open = __wsp_io_open__mmap,
+    .close = __wsp_io_close__mmap,
     .read = __wsp_io_read__mmap,
     .write = __wsp_io_write__mmap,
 };

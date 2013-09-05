@@ -6,8 +6,9 @@ ext = Extension(
     sources=[
         'src/python/wsp.c',
         'src/python/WhisperException.c',
-        'src/python/WhisperFile.c',
-        'src/python/WhisperArchiveInfo.c',
+        'src/python/Whisper.c',
+        'src/python/WhisperMetadata.c',
+        'src/python/WhisperArchive.c',
     ],
     extra_compile_args=[
         '-I./src'
