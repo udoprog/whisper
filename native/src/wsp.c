@@ -3,7 +3,6 @@
 #include "wsp.h"
 #include "wsp_private.h"
 #include "wsp_time.h"
-
 #include "wsp_io_file.h"
 #include "wsp_io_mmap.h"
 
@@ -112,9 +111,9 @@ wsp_return_t wsp_close(wsp_t *w, wsp_error_t *e)
         wsp_metadata_t m = w->meta;
 
         for (i = 0; i < m.archives_count; i++) {
-            wsp_archive_t *ai = w->archives + i;
+            wsp_archive_t *archive = w->archives + i;
 
-            if (__wsp_archive_free(ai, e) == WSP_ERROR) {
+            if (__wsp_archive_free(archive, e) == WSP_ERROR) {
                 return WSP_ERROR;
             }
         }
@@ -145,33 +144,6 @@ wsp_return_t wsp_load_all_points(
 )
 {
     return wsp_load_points(w, archive, 0, archive->count, points, e);
-}
-
-int __wsp_load_points(
-    wsp_t *w,
-    wsp_archive_t *archive,
-    uint32_t offset,
-    uint32_t size,
-    wsp_point_t *result,
-    wsp_error_t *e
-)
-{
-    size_t read_offset = archive->offset + sizeof(wsp_point_b) * offset;
-    size_t read_size = sizeof(wsp_point_b) * size;
-
-    wsp_point_b *buf = NULL;
-
-    if (w->io->read(w, read_offset, read_size, (void **)&buf, e) == WSP_ERROR) {
-        return WSP_ERROR;
-    }
-
-    __wsp_parse_points(buf, size, result);
-
-    if (w->io_manual_buf) {
-        free(buf);
-    }
-
-    return WSP_OK;
 }
 
 inline uint32_t __point_mod(int value, uint32_t div)
@@ -312,7 +284,7 @@ wsp_return_t wsp_load_point(
     wsp_point_b buf;
     wsp_point_b *rbuf = &buf;
 
-    size_t read_offset = __wsp_point_offset(archive, index);
+    size_t read_offset = WSP_POINT_OFFSET(archive, index);
     size_t read_size = sizeof(wsp_point_b);
 
     if (w->io->read(w, read_offset, read_size, (void **)&rbuf, e) == WSP_ERROR) {
@@ -326,7 +298,7 @@ wsp_return_t wsp_load_point(
 
 wsp_return_t wsp_save_point(
     wsp_t *w,
-    wsp_archive_t *ai,
+    wsp_archive_t *archive,
     long index,
     wsp_point_t *point,
     wsp_error_t *e
@@ -334,12 +306,12 @@ wsp_return_t wsp_save_point(
 {
     wsp_point_b buf;
 
-    if (index >= ai->count) {
+    if (index >= archive->count) {
         e->type = WSP_ERROR_POINT_OOB;
         return WSP_ERROR;
     }
 
-    size_t write_offset = __wsp_point_offset(ai, index);
+    size_t write_offset = WSP_POINT_OFFSET(archive, index);
     size_t write_size = sizeof(wsp_point_b);
 
     __wsp_dump_point(point, &buf);
@@ -350,46 +322,6 @@ wsp_return_t wsp_save_point(
 
     return WSP_OK;
 } // wsp_save_point
-
-wsp_return_t __wsp_find_low(
-    wsp_time_t diff,
-    wsp_t *w,
-    wsp_archive_t **low,
-    uint32_t *low_size,
-    wsp_error_t *e
-)
-{
-    wsp_time_t max_retention = (wsp_time_t)w->meta.max_retention;
-
-    if (diff >= max_retention) {
-        e->type = WSP_ERROR_RETENTION;
-        return WSP_ERROR;
-    }
-
-    uint32_t index = 0;
-
-    for (index = 0; index < w->archives_count; index++) {
-        wsp_archive_t *ai =  w->archives + index;
-
-        if (ai->retention < diff) {
-            continue;
-        }
-
-        break;
-    }
-
-    uint32_t size = w->archives_count - index;
-
-    if (size == 0) {
-        e->type = WSP_ERROR_ARCHIVE;
-        return WSP_ERROR;
-    }
-
-    *low = w->archives + index;
-    *low_size = w->archives_count - index;
-
-    return WSP_OK;
-}
 
 inline uint32_t wsp_point_index(
     wsp_archive_t *archive,
@@ -439,7 +371,7 @@ wsp_return_t wsp_update_point(
 
 wsp_return_t wsp_update(wsp_t *w, wsp_point_t *p, wsp_error_t *e)
 {
-    wsp_time_t now = wsp_time();
+    wsp_time_t now = wsp_time_now();
 
     wsp_time_t timestamp = p->timestamp;
     double value = p->value;
@@ -458,7 +390,7 @@ wsp_return_t wsp_update(wsp_t *w, wsp_point_t *p, wsp_error_t *e)
     wsp_archive_t *low = NULL;
     uint32_t low_size = 0;
 
-    if (__wsp_find_low(diff, w, &low, &low_size, e) == WSP_ERROR) {
+    if (__wsp_find_highest_precision(diff, w, &low, &low_size, e) == WSP_ERROR) {
         return WSP_ERROR;
     }
 

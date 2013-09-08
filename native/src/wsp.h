@@ -1,7 +1,32 @@
 // vim: foldmethod=marker
-
+/**
+ * Whisper Database Functions.
+ *
+ * Opening a Database
+ * ------------------
+ * wsp_open
+ *
+ * Example:
+ *
+ *   if (wsp_open(&w, p, WSP_MMAP, &e) == WSP_ERROR) {
+ *       printf("%s: %s: %s\n", wsp_strerror(&e), strerror(e.syserr), p);
+ *       return 1;
+ *   }
+ *
+ * Error Handling
+ * --------------
+ * Every single function takes a wsp_error_t as the last argument.
+ * Every single function returns WSP_OK on success, or WSP_ERROR on failure.
+ * On failure, all functions are doing their best to not overwrite any prior
+ * state, unless otherwise specified.
+ */
 #ifndef _WSP_H_
 #define _WSP_H_
+
+/**
+ * If defined, archives will be validated when they are read.
+ */
+#define VALIDATE_ARCHIVE
 
 #include <stdio.h>
 #include <stdint.h>
@@ -65,16 +90,18 @@ typedef struct wsp_archive_t wsp_archive_t;
 typedef struct wsp_metadata_b wsp_metadata_b;
 typedef struct wsp_metadata_t wsp_metadata_t;
 
-/* public functions {{{ */
 const char *wsp_strerror(wsp_error_t *);
 
 struct wsp_error_t {
     wsp_errornum_t type;
     int syserr;
 };
-/* }}} */
 
-/* wsp_t functions {{{ */
+#define WSP_ERROR_INIT(e) do {\
+    (e)->type = WSP_ERROR_NONE;\
+    (e)->syserr = 0;\
+} while(0)
+
 /* read function */
 typedef wsp_return_t(*wsp_io_read_f)(
     wsp_t *w,
@@ -139,7 +166,6 @@ struct wsp_metadata_t {
     (m)->archives_count = 0;\
     (m)->aggregate = NULL;\
 } while(0)
-/* }}} */
 
 typedef struct {
     wsp_io_open_f open;
@@ -186,18 +212,40 @@ struct wsp_t {
     (w)->archives_count = 0;\
 } while(0)
 
+/**
+ * Open the specified path as a whisper database.
+ *
+ * w: Whisper database handle, should have been initialized using WSP_INIT
+ * prior to this function.
+ * path: Path to the file containing the whisper database.
+ * mapping: The file mapping method to use; WSP_MMAP or WSP_FILE.
+ * e: Error object.
+ */
 wsp_return_t wsp_open(
-    wsp_t *,
+    wsp_t *w,
     const char *path,
-    wsp_mapping_t,
-    wsp_error_t *
+    wsp_mapping_t mapping,
+    wsp_error_t *e
 );
 
+/**
+ * Close an already open whisper database.
+ *
+ * w: Whisper database.
+ * e: Error object.
+ */
 wsp_return_t wsp_close(
-    wsp_t *,
-    wsp_error_t *
+    wsp_t *w,
+    wsp_error_t *e
 );
 
+/**
+ * Insert an update in the database.
+ *
+ * w: Whisper database.
+ * p: Point to insert.
+ * e: Error object.
+ */
 wsp_return_t wsp_update(
     wsp_t *w,
     wsp_point_t *p,
@@ -214,7 +262,6 @@ wsp_return_t wsp_update_point(
 );
 /* }}} */
 
-/* wsp_archive_t functions {{{ */
 struct wsp_archive_b {
     char offset[sizeof(uint32_t)];
     char spp[sizeof(uint32_t)];
@@ -241,9 +288,9 @@ struct wsp_archive_t {
  * time_from: Starting time interval.
  * time_until: Ending time interval.
  * result: Where to store the result, this should have a t least archive->count
- *         space allocated.
+ * space allocated.
  * size: Where to store the length of the resulting points.
- * e: Where to store error information.
+ * e: Error object.
  */
 wsp_return_t wsp_load_time_points(
     wsp_t *w,
@@ -283,16 +330,6 @@ wsp_return_t wsp_load_points(
     wsp_error_t *error
 );
 
-/**
- * Free an archive info instance.
- */
-wsp_return_t wsp_archive_free(
-    wsp_archive_t *,
-    wsp_error_t *
-);
-/* }}} */
-
-/* wsp_point_t functions {{{ */
 struct wsp_point_b {
     char timestamp[sizeof(uint32_t)];
     char value[sizeof(double)];
@@ -307,15 +344,11 @@ struct wsp_point_t {
     (p)->timestamp = 0; \
     (p)->value = 0; \
 } while(0)
-/* }}} */
 
-/* public macros {{{ */
-#define WSP_ERROR_INIT(e) do {\
-    (e)->type = WSP_ERROR_NONE;\
-    (e)->syserr = 0;\
-} while(0)
-
-#define VALIDATE_ARCHIVE
-/* }}} */
+/*
+ * Calculate the absolute offset for a specific point in the database.
+ */
+#define WSP_POINT_OFFSET(archive, index) \
+    (archive)->offset + sizeof(wsp_point_b) * index;
 
 #endif /* _WSP_H_ */

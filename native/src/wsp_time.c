@@ -2,7 +2,7 @@
 
 #include <time.h>
 
-wsp_time_t wsp_time(void)
+wsp_time_t wsp_time_now(void)
 {
     return time(NULL);
 }
