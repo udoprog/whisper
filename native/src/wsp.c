@@ -13,7 +13,7 @@
 #include <stdio.h>
 #include <math.h>
 
-/* static initialization {{{ */
+// static initialization {{{
 const char *wsp_error_strings[WSP_ERROR_SIZE] = {
     /* WSP_ERROR_NONE */
     "No error",
@@ -45,17 +45,14 @@ const char *wsp_error_strings[WSP_ERROR_SIZE] = {
     "Archive headers are not aligned",
     /* WSP_ERROR_TIME_INTERVAL */
     "Invalid time interval"
-};
-/* }}} */
+}; // static initialization }}}
 
-/* public functions {{{ */
 const char *wsp_strerror(wsp_error_t *e)
 {
     return wsp_error_strings[e->type];
 }
-/* }}} */
 
-/* wsp_t functions {{{ */
+// wsp_open {{{
 wsp_return_t wsp_open(
     wsp_t *w,
     const char *path,
@@ -101,8 +98,9 @@ wsp_return_t wsp_open(
     }
 
     return WSP_OK;
-} // wsp_open
+} // wsp_open }}}
 
+// wsp_close {{{
 wsp_return_t wsp_close(wsp_t *w, wsp_error_t *e)
 {
     if (w->archives != NULL) {
@@ -134,8 +132,9 @@ wsp_return_t wsp_close(wsp_t *w, wsp_error_t *e)
     w->meta.archives_count = 0l;
 
     return WSP_OK;
-} // wsp_close
+} // wsp_close }}}
 
+// wsp_load_all_points {{{
 wsp_return_t wsp_load_all_points(
     wsp_t *w,
     wsp_archive_t *archive,
@@ -144,18 +143,7 @@ wsp_return_t wsp_load_all_points(
 )
 {
     return wsp_load_points(w, archive, 0, archive->count, points, e);
-}
-
-inline uint32_t __point_mod(int value, uint32_t div)
-{
-    int result = value % ((int)div);
-
-    if (result < 0) {
-        result += div;
-    }
-
-    return (uint32_t)result;
-} // __point_mod
+} // wsp_load_all_points }}}
 
 wsp_return_t wsp_load_time_points(
     wsp_t *w,
@@ -223,8 +211,8 @@ wsp_return_t wsp_load_points(
         count = archive->count;
     }
 
-    uint32_t from = __point_mod(offset, archive->count);
-    uint32_t until = __point_mod(offset + count, archive->count);
+    uint32_t from = __wsp_point_mod(offset, archive->count);
+    uint32_t until = __wsp_point_mod(offset + count, archive->count);
 
     wsp_point_t read_points[count];
 
@@ -276,7 +264,7 @@ wsp_return_t wsp_load_points(
 wsp_return_t wsp_load_point(
     wsp_t *w,
     wsp_archive_t *archive,
-    long index,
+    uint32_t index,
     wsp_point_t *point,
     wsp_error_t *e
 )
@@ -439,4 +427,3 @@ wsp_return_t wsp_update(wsp_t *w, wsp_point_t *p, wsp_error_t *e)
 
     return WSP_OK;
 } // wsp_update
-/* }}} */

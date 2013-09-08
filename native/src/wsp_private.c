@@ -618,3 +618,15 @@ int __wsp_load_points(
 
     return WSP_OK;
 } // __wsp_load_points }}}
+
+// __wsp_point_mod {{{
+uint32_t __wsp_point_mod(int value, uint32_t div)
+{
+    int result = value % ((int)div);
+
+    if (result < 0) {
+        result += div;
+    }
+
+    return (uint32_t)result;
+} // __wsp_point_mod }}}

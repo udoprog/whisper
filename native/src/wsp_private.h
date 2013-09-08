@@ -117,4 +117,6 @@ int __wsp_load_points(
     wsp_error_t *e
 );
 
+uint32_t __wsp_point_mod(int value, uint32_t div);
+
 #endif /* _WSP_PRIVATE_H_ */

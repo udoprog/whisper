@@ -2,6 +2,9 @@
 /**
  * Whisper Database Functions.
  *
+ * Read the 'Error Handling' section since it details the most important aspect
+ * of using this library.
+ *
  * Opening a Database
  * ------------------
  * wsp_open
@@ -15,10 +18,15 @@
  *
  * Error Handling
  * --------------
- * Every single function takes a wsp_error_t as the last argument.
- * Every single function returns WSP_OK on success, or WSP_ERROR on failure.
- * On failure, all functions are doing their best to not overwrite any prior
- * state, unless otherwise specified.
+ * The details of error handling of each function will not be documented unless
+ * there is an exception to any of these rules.
+ *
+ * - All functions return WSP_OK on success or WSP_ERROR on failure.
+ * - All functions take an wsp_error_t as the last argument.
+ * - On failure, the last error object will be populated with details about the
+ *   encountered problem.
+ * - On failure, all functions are doing their best to be atomic, failures
+ *   should not cause undefined state.
  */
 #ifndef _WSP_H_
 #define _WSP_H_
@@ -102,37 +110,79 @@ struct wsp_error_t {
     (e)->syserr = 0;\
 } while(0)
 
-/* read function */
+/**
+ * I/O mapping reader function.
+ *
+ * w: Whisper database.
+ * offset: Offset to read.
+ * size: Size to read.
+ * buf: Buffer to read into, if points addressed is NULL, space will be
+ * allocated that might have to be fread depending on the value of
+ * w->io_manual_buf.
+ * e: Error object.
+ */
 typedef wsp_return_t(*wsp_io_read_f)(
     wsp_t *w,
     long offset,
     size_t size,
     void **buf,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
-/*
- * Mapping writer function definition.
+/**
+ * I/O mapping writer function.
+ *
+ * w: Whisper database.
+ * offset: Offset to write.
+ * size: Size to write.
+ * buf: Buffer to write from.
+ * e: Error object.
  */
 typedef wsp_return_t(*wsp_io_write_f)(
     wsp_t *w,
     long offset,
     size_t size,
     void *buf,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
+/**
+ * I/O mapping open function.
+ *
+ * w: Whisper database.
+ * path: Path to open.
+ * e: Error object.
+ */
 typedef wsp_return_t(*wsp_io_open_f)(
     wsp_t *w,
     const char *path,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
+/**
+ * I/O mapping close function.
+ *
+ * w: Whisper database.
+ * e: Error object.
+ */
 typedef wsp_return_t(*wsp_io_close_f)(
     wsp_t *w,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
+/**
+ * Whisper aggregate function.
+ *
+ * Most of the available functions are defined in wsp_private.c.
+ *
+ * w: Whisper database.
+ * points: Points to aggregate.
+ * count : Amount of points that are being aggregated.
+ * value: Where to store the resulting value.
+ * skip: Will be changed to 1 if there are not enough points to aggregate
+ * a value, and the rest of the archives should be skipped.
+ * e: Error object.
+ */
 typedef wsp_return_t(*wsp_aggregate_f)(
     wsp_t *w,
     wsp_point_t *points,
@@ -142,7 +192,6 @@ typedef wsp_return_t(*wsp_aggregate_f)(
     wsp_error_t *e
 );
 
-/* wsp_metadata_t functions {{{ */
 struct wsp_metadata_b {
     char aggregation[sizeof(uint32_t)];
     char max_retention[sizeof(uint32_t)];
@@ -260,7 +309,6 @@ wsp_return_t wsp_update_point(
     wsp_point_t *base,
     wsp_error_t *e
 );
-/* }}} */
 
 struct wsp_archive_b {
     char offset[sizeof(uint32_t)];
@@ -280,15 +328,15 @@ struct wsp_archive_t {
     uint64_t retention;
 };
 
-/*
+/**
  * Load points between two timestamps.
  *
  * w: Whisper Database
  * archive: Whisper archive to load from.
- * time_from: Starting time interval.
- * time_until: Ending time interval.
- * result: Where to store the result, this should have a t least archive->count
- * space allocated.
+ * time_from: Start of time interval.
+ * time_until: End of time interval.
+ * result: Where to store the result, this should have at least archive->count
+ * space already allocated.
  * size: Where to store the length of the resulting points.
  * e: Error object.
  */
@@ -302,17 +350,29 @@ wsp_return_t wsp_load_time_points(
     wsp_error_t *e
 );
 
+/**
+ * Like wsp_load_points but will read all points.
+ */
 wsp_return_t wsp_load_all_points(
     wsp_t *w,
     wsp_archive_t *archive,
     wsp_point_t *points,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
+/**
+ * Load a single point from an archive.
+ *
+ * w: Whisper database.
+ * archive: The archive to read the point from.
+ * index: Index of the point to read.
+ * point: Where to store the read point.
+ * e: Error object.
+ */
 wsp_return_t wsp_load_point(
     wsp_t *w,
     wsp_archive_t *archive,
-    long index,
+    uint32_t index,
     wsp_point_t *point,
     wsp_error_t *e
 );
@@ -320,6 +380,13 @@ wsp_return_t wsp_load_point(
 /**
  * Read points into buffer for a specific archive.
  * This function takes care for any wrap around in the archive.
+ *
+ * w: Whisper database,
+ * archive: Archive to load points from.
+ * offset: Offset of the points to load.
+ * count: Number of points to load.
+ * points: Where to store points.
+ * e: Error object.
  */
 wsp_return_t wsp_load_points(
     wsp_t *w,
@@ -327,7 +394,7 @@ wsp_return_t wsp_load_points(
     int offset,
     uint32_t count,
     wsp_point_t *points,
-    wsp_error_t *error
+    wsp_error_t *e
 );
 
 struct wsp_point_b {
